@@ -20,12 +20,12 @@ Android 앱 개발 학습 과정에서 Jetpack Compose를 활용한 프로젝트
 
 영단어 추가/수정/삭제, 플래시카드, 퀴즈 기능을 제공하는 학습 앱으로, DataStore를 활용한 데이터 영구 저장을 학습합니다.
 
-![MyApp 실행 화면1](screenshots/week7_screenshot_1.png)
-![MyApp 실행 화면2](screenshots/week7_screenshot_2.png)
-![MyApp 실행 화면3](screenshots/week7_screenshot_3.png)
-![MyApp 실행 화면4](screenshots/week7_screenshot_4.png)
-![MyApp 코드1](screenshots/week7_code_1.png)
-![MyApp 코드2](screenshots/week7_code_2.png)
+![MyApp 실행 화면1](screenshots/myapp_screenshot_1.png)
+![MyApp 실행 화면2](screenshots/myapp_screenshot_2.png)
+![MyApp 실행 화면3](screenshots/myapp_screenshot_3.png)
+![MyApp 실행 화면4](screenshots/myapp_screenshot_4.png)
+![MyApp 코드1](screenshots/myapp_code_1.png)
+![MyApp 코드2](screenshots/myapp_code_2.png)
 
 ### 주요 기능
 
