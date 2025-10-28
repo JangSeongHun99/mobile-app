@@ -183,7 +183,8 @@ Material3 Card 컴포넌트를 활용한 프로필 및 메시지 카드 UI 구�
 
 물리 효과와 애니메이션을 적용한 인터랙티브 버블 게임입니다.
 
-![Week 6 실행 화면](screenshots/week6_screenshot.png)
+![Week 6 실행 화면1](screenshots/week6_screenshot_1.png)
+![Week 6 실행 화면2](screenshots/week6_screenshot_2.png)
 ![Week 6 코드](screenshots/week6_code.png)
 
 ### 기존 코드
