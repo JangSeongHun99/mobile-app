@@ -6,7 +6,7 @@ Android 앱 개발 학습 과정에서 Jetpack Compose를 활용한 프로젝트
 
 ## 목차
 
-- [MyApp - 퀴즈앱](#MyApp-퀴즈앱)
+- [MyApp - 퀴즈앱](#MyApp---퀴즈앱)
 - [Week 3 - Gemini Home Screen](#week-3---gemini-home-screen)
 - [Week 4 - Profile & Message Cards](#week-4---profile--message-cards)
 - [Week 5 - Counter & Stopwatch](#week-5---counter--stopwatch)
