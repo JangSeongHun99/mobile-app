@@ -6,10 +6,67 @@ Android 앱 개발 학습 과정에서 Jetpack Compose를 활용한 프로젝트
 
 ## 목차
 
+- [MyApp- 퀴즈앱](#MyApp 개별앱---vocabulary-learning-app)
 - [Week 3 - Gemini Home Screen](#week-3---gemini-home-screen)
 - [Week 4 - Profile & Message Cards](#week-4---profile--message-cards)
 - [Week 5 - Counter & Stopwatch](#week-5---counter--stopwatch)
 - [Week 6 - Bubble Game](#week-6---bubble-game)
+
+---
+
+## MyApp- 퀴즈앱
+
+### 프로젝트 개요
+
+영단어 추가/수정/삭제, 플래시카드, 퀴즈 기능을 제공하는 학습 앱으로, DataStore를 활용한 데이터 영구 저장을 학습합니다.
+
+![MyApp 실행 화면1](screenshots/week7_screenshot_1.png)
+![MyApp 실행 화면2](screenshots/week7_screenshot_2.png)
+![MyApp 실행 화면3](screenshots/week7_screenshot_3.png)
+![MyApp 실행 화면4](screenshots/week7_screenshot_4.png)
+![MyApp 코드1](screenshots/week7_code_1.png)
+![MyApp 코드2](screenshots/week7_code_2.png)
+
+### 주요 기능
+
+- **홈**: 단어 개수 요약 및 화면 이동
+- **단어 관리**: 단어 추가/수정/삭제
+- **플래시카드**: 단어↔뜻 뒤집기, 순서 전환
+- **퀴즈**: 단어/뜻 먼저 모드, 순서 섞기, 정답 확인
+
+### 기술 스택
+
+- **저장소**: Preferences DataStore (JSON 직렬화)
+- **네비게이션**: Navigation-Compose
+- **상태 관리**: `rememberSaveable`, `collectAsState`
+
+### 핵심 구현
+
+```kotlin
+data class WordEntry(
+    val id: Long,
+    val term: String,
+    val meaning: String
+)
+
+// DataStore 설정
+private const val WORD_DATA_STORE_NAME = "word_storage"
+private val Context.wordDataStore by preferencesDataStore(name = WORD_DATA_STORE_NAME)
+```
+
+### 의존성
+
+```kotlin
+implementation("androidx.datastore:datastore-preferences:1.1.1")
+implementation("androidx.navigation:navigation-compose:2.7.7")
+```
+
+### 주요 학습 내용
+
+- Preferences DataStore를 활용한 로컬 데이터 저장
+- Navigation-Compose를 통한 화면 전환
+- 복잡한 상태 관리 및 UI 업데이트
+- 퀴즈 로직 구현 (셔플, 순환, 답안 검증)
 
 ---
 
@@ -126,8 +183,7 @@ Material3 Card 컴포넌트를 활용한 프로필 및 메시지 카드 UI 구�
 
 물리 효과와 애니메이션을 적용한 인터랙티브 버블 게임입니다.
 
-![Week 6 실행 화면1](screenshots/week6_screenshot_1.png)
-![Week 6 실행 화면2](screenshots/week6_screenshot_2.png)
+![Week 6 실행 화면](screenshots/week6_screenshot.png)
 ![Week 6 코드](screenshots/week6_code.png)
 
 ### 기존 코드
@@ -151,37 +207,6 @@ Material3 Card 컴포넌트를 활용한 프로필 및 메시지 카드 UI 구�
 - 물리 시뮬레이션 구현 (중력, 충돌 감지)
 - 게임 상태 관리 및 페이즈 전환
 - 애니메이션 및 사용자 인터랙션 처리
-
----
-
-## 기술 스택
-
-- **Language**: Kotlin
-- **UI Framework**: Jetpack Compose
-- **Design**: Material3
-- **Architecture**: MVVM (상태 관리)
-
----
-
-## 프로젝트 구조
-
-```
-project/
-├── screenshots/          # 각 주차별 스크린샷
-│   ├── week3_screenshot.png
-│   ├── week3_code.png
-│   ├── week4_screenshot.png
-│   ├── week4_code.png
-│   ├── week5_screenshot.png
-│   ├── week5_code.png
-│   ├── week6_screenshot.png
-│   └── week6_code.png
-└── src/
-    └── main/
-        ├── java/
-        └── res/
-            └── drawable/    # 이미지 리소스
-```
 
 ---
 
