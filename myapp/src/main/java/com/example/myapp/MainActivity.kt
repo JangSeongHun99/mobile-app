@@ -3,36 +3,9 @@ package com.example.myapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,20 +15,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.myapp.ui.theme.MyApplicationTheme
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.myapp.data.ToeicCategoryClassifier
+import com.example.myapp.data.ToeicWords
+import com.example.myapp.data.UserProgress
+import com.example.myapp.data.UserProgressStorage
 import com.example.myapp.data.WordStorage
-import kotlin.random.Random
+import com.example.myapp.models.DefaultCategories
+import com.example.myapp.models.QuizMode
+import com.example.myapp.models.WordEntry
+import com.example.myapp.navigation.Screen
+import com.example.myapp.ui.screens.BadgesScreen
+import com.example.myapp.ui.screens.FlashcardScreen
+import com.example.myapp.ui.screens.HomeScreen
+import com.example.myapp.ui.screens.QuizScreen
+import com.example.myapp.ui.screens.TypingGameScreen
+import com.example.myapp.ui.screens.WordManagerScreen
+import com.example.myapp.ui.theme.MyApplicationTheme
+import com.example.myapp.utils.autoUnlockBadges
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,14 +65,32 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val context = LocalContext.current
     val wordStorage = remember { WordStorage(context) }
+    val progressStorage = remember { UserProgressStorage(context) }
     val scope = rememberCoroutineScope()
     val words by wordStorage.wordsFlow.collectAsState(initial = emptyList())
+    val userProgress by progressStorage.progressFlow.collectAsState(initial = UserProgress())
 
     var newTerm by rememberSaveable { mutableStateOf("") }
     var newMeaning by rememberSaveable { mutableStateOf("") }
+    var newCategoryId by rememberSaveable { mutableStateOf(DefaultCategories.UNCATEGORIZED.id) }
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editingTerm by rememberSaveable { mutableStateOf("") }
     var editingMeaning by rememberSaveable { mutableStateOf("") }
+    var editingCategoryId by rememberSaveable { mutableStateOf(DefaultCategories.UNCATEGORIZED.id) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedCategoryId by rememberSaveable { mutableStateOf(DefaultCategories.ALL.id) } // 전체 카테고리가 기본값
+
+    val categories = remember { DefaultCategories.getDefaultList() }
+    val categoryWordCounts = remember(words) {
+        categories.associate { category ->
+            val count = if (category.id == DefaultCategories.ALL.id) {
+                words.size
+            } else {
+                words.count { it.categoryId == category.id }
+            }
+            category.id to count
+        }
+    }
 
     var selectedCardIndex by rememberSaveable { mutableStateOf(0) }
     var isMeaningFirst by rememberSaveable { mutableStateOf(false) }
@@ -97,17 +102,40 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
     var quizSeed by rememberSaveable { mutableStateOf(0) }
     var quizRevealed by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        wordStorage.ensureSeeded(
-            listOf(
-                WordEntry(id = 1L, term = "apple", meaning = "사과"),
-                WordEntry(id = 2L, term = "compose", meaning = "안드로이드 UI 툴킷")
-            )
-        )
+    val today = remember {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
 
-    val quizOrder = remember(quizSeed, words.size, shuffleEnabled) {
-        val indices = words.indices.toList()
+    LaunchedEffect(Unit) {
+        wordStorage.ensureSeeded(ToeicWords.defaultWords)
+    }
+
+    LaunchedEffect(words) {
+        if (words.isNotEmpty() && words.any { it.categoryId == DefaultCategories.UNCATEGORIZED.id }) {
+            val updated = words.map { word ->
+                if (word.categoryId == DefaultCategories.UNCATEGORIZED.id) {
+                    ToeicCategoryClassifier.apply(word)
+                } else {
+                    word
+                }
+            }
+            if (updated != words) {
+                wordStorage.setWords(updated)
+            }
+        }
+    }
+
+    // 카테고리 필터링된 단어 목록
+    val filteredWords = remember(words, selectedCategoryId) {
+        if (selectedCategoryId == "all") {
+            words
+        } else {
+            words.filter { it.categoryId == selectedCategoryId }
+        }
+    }
+
+    val quizOrder = remember(quizSeed, filteredWords.size, shuffleEnabled) {
+        val indices = filteredWords.indices.toList()
         if (shuffleEnabled) {
             if (indices.isEmpty()) emptyList() else indices.shuffled(Random(quizSeed))
         } else {
@@ -115,10 +143,14 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
         }
     }
 
-    val currentQuizWord = quizOrder.getOrNull(quizPosition)?.let { words[it] }
+    val currentQuizWord = quizOrder.getOrNull(quizPosition)?.let { filteredWords[it] }
+    val currentQuizWordForUi = currentQuizWord?.let { target ->
+        // 최신 상태(정답/오답 횟수)를 words에서 다시 찾아서 전달
+        words.find { it.id == target.id } ?: target
+    }
 
-    LaunchedEffect(words.size) {
-        if (selectedCardIndex >= words.size) {
+    LaunchedEffect(filteredWords.size) {
+        if (selectedCardIndex >= filteredWords.size) {
             selectedCardIndex = 0
             isCardFlipped = false
         }
@@ -134,6 +166,27 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
         quizSeed++
     }
 
+    val onCategorySelected: (String) -> Unit = { categoryId ->
+        val safeId = categories.find { it.id == categoryId }?.id ?: DefaultCategories.ALL.id
+        selectedCategoryId = safeId
+        selectedCardIndex = 0
+        isCardFlipped = false
+        quizPosition = 0
+        quizRevealed = false
+        quizSeed++
+    }
+
+    fun goToNextQuizQuestion() {
+        if (quizOrder.isEmpty()) return
+        if (quizPosition + 1 >= quizOrder.size) {
+            quizPosition = 0
+            if (shuffleEnabled) quizSeed++
+        } else {
+            quizPosition += 1
+        }
+        quizRevealed = false
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Home.route,
@@ -141,8 +194,18 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
     ) {
         composable(Screen.Home.route) {
             HomeScreen(
-                wordCount = words.size,
-                onNavigateToManage = { navController.navigate(Screen.Manage.route) },
+                allWords = words,
+                filteredWords = filteredWords,
+                userProgress = userProgress,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = onCategorySelected,
+                navController = navController,
+                onNavigateToManage = {
+                    if (selectedCategoryId != DefaultCategories.ALL.id) {
+                        newCategoryId = selectedCategoryId
+                    }
+                    navController.navigate(Screen.Manage.route)
+                },
                 onNavigateToFlashcards = { navController.navigate(Screen.Flashcards.route) },
                 onNavigateToQuiz = { navController.navigate(Screen.Quiz.route) }
             )
@@ -150,20 +213,36 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
         composable(Screen.Manage.route) {
             WordManagerScreen(
                 words = words,
+                categories = categories,
                 newTerm = newTerm,
                 newMeaning = newMeaning,
+                newCategoryId = newCategoryId,
                 editingId = editingId,
                 editingTerm = editingTerm,
                 editingMeaning = editingMeaning,
+                editingCategoryId = editingCategoryId,
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
                 onNewTermChange = { newTerm = it },
                 onNewMeaningChange = { newMeaning = it },
+                onNewCategoryChange = { newCategoryId = it },
                 onAddWord = {
                     val trimmedTerm = newTerm.trim()
                     val trimmedMeaning = newMeaning.trim()
                     if (trimmedTerm.isNotEmpty() && trimmedMeaning.isNotEmpty()) {
                         val nextId = (words.maxOfOrNull { it.id } ?: 0L) + 1L
+                        val categoryForNew = when (newCategoryId) {
+                            DefaultCategories.ALL.id -> DefaultCategories.UNCATEGORIZED.id
+                            DefaultCategories.UNCATEGORIZED.id -> ToeicCategoryClassifier.classify(trimmedTerm, trimmedMeaning)
+                            else -> newCategoryId
+                        }
                         val updatedList =
-                            words + WordEntry(id = nextId, term = trimmedTerm, meaning = trimmedMeaning)
+                            words + WordEntry(
+                                id = nextId,
+                                term = trimmedTerm,
+                                meaning = trimmedMeaning,
+                                categoryId = categoryForNew
+                            )
                         scope.launch { wordStorage.setWords(updatedList) }
                         newTerm = ""
                         newMeaning = ""
@@ -173,18 +252,32 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
                     editingId = word.id
                     editingTerm = word.term
                     editingMeaning = word.meaning
+                    editingCategoryId = if (word.categoryId == DefaultCategories.ALL.id) {
+                        DefaultCategories.UNCATEGORIZED.id
+                    } else {
+                        word.categoryId
+                    }
                 },
                 onEditTermChange = { editingTerm = it },
                 onEditMeaningChange = { editingMeaning = it },
+                onEditCategoryChange = { editingCategoryId = it },
                 onEditConfirm = {
                     val id = editingId
                     if (id != null) {
                         val updatedTerm = editingTerm.trim()
                         val updatedMeaning = editingMeaning.trim()
                         if (updatedTerm.isNotEmpty() && updatedMeaning.isNotEmpty()) {
+                            val categoryForEdit = when (editingCategoryId) {
+                                DefaultCategories.ALL.id -> DefaultCategories.UNCATEGORIZED.id
+                                else -> editingCategoryId
+                            }
                             val updatedList = words.map { word ->
                                 if (word.id == id) {
-                                    word.copy(term = updatedTerm, meaning = updatedMeaning)
+                                    word.copy(
+                                        term = updatedTerm,
+                                        meaning = updatedMeaning,
+                                        categoryId = categoryForEdit
+                                    )
                                 } else {
                                     word
                                 }
@@ -193,6 +286,7 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
                             editingId = null
                             editingTerm = ""
                             editingMeaning = ""
+                            editingCategoryId = DefaultCategories.UNCATEGORIZED.id
                         }
                     }
                 },
@@ -200,6 +294,7 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
                     editingId = null
                     editingTerm = ""
                     editingMeaning = ""
+                    editingCategoryId = DefaultCategories.UNCATEGORIZED.id
                 },
                 onDeleteWord = { word ->
                     if (words.any { it.id == word.id }) {
@@ -209,6 +304,7 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
                             editingId = null
                             editingTerm = ""
                             editingMeaning = ""
+                            editingCategoryId = DefaultCategories.UNCATEGORIZED.id
                         }
                     }
                 },
@@ -216,27 +312,32 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
                     editingId = null
                     editingTerm = ""
                     editingMeaning = ""
+                    searchQuery = ""
                     navController.popBackStack()
                 }
             )
         }
         composable(Screen.Flashcards.route) {
             FlashcardScreen(
-                words = words,
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                categoryWordCounts = categoryWordCounts,
+                onCategorySelected = onCategorySelected,
+                words = filteredWords,
                 selectedIndex = selectedCardIndex,
                 isMeaningFirst = isMeaningFirst,
                 isFlipped = isCardFlipped,
                 onSelectPrevious = {
-                    if (words.isNotEmpty()) {
+                    if (filteredWords.isNotEmpty()) {
                         selectedCardIndex =
-                            if (selectedCardIndex == 0) words.lastIndex else selectedCardIndex - 1
+                            if (selectedCardIndex == 0) filteredWords.lastIndex else selectedCardIndex - 1
                         isCardFlipped = false
                     }
                 },
                 onSelectNext = {
-                    if (words.isNotEmpty()) {
+                    if (filteredWords.isNotEmpty()) {
                         selectedCardIndex =
-                            if (selectedCardIndex == words.lastIndex) 0 else selectedCardIndex + 1
+                            if (selectedCardIndex == filteredWords.lastIndex) 0 else selectedCardIndex + 1
                         isCardFlipped = false
                     }
                 },
@@ -249,20 +350,59 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
             )
         }
         composable(Screen.Quiz.route) {
-            QuizPracticeScreen(
-                words = words,
-                currentWord = currentQuizWord,
+            QuizScreen(
+                words = filteredWords,
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                categoryWordCounts = categoryWordCounts,
+                currentWord = currentQuizWordForUi,
                 quizMode = quizMode,
                 shuffleEnabled = shuffleEnabled,
                 quizPosition = quizPosition,
                 totalQuestions = quizOrder.size,
                 quizRevealed = quizRevealed,
+                onCategorySelected = onCategorySelected,
                 onModeChange = {
                     quizMode = it
                     quizRevealed = false
                 },
                 onToggleShuffle = { shuffleEnabled = it },
                 onRevealAnswer = { quizRevealed = true },
+                onMarkCorrect = {
+                    currentQuizWord?.let { word ->
+                        val updatedList = words.map {
+                            if (it.id == word.id) it.copy(correctCount = it.correctCount + 1)
+                            else it
+                        }
+                        scope.launch {
+                            wordStorage.setWords(updatedList)
+
+                            val updatedProgress = userProgress
+                                .addXP(10)
+                                .updateStreakForToday(today)
+                                .let { autoUnlockBadges(it, updatedList) }
+                            progressStorage.saveProgress(updatedProgress)
+                        }
+                    }
+                    goToNextQuizQuestion()
+                },
+                onMarkIncorrect = {
+                    currentQuizWord?.let { word ->
+                        val updatedList = words.map {
+                            if (it.id == word.id) it.copy(incorrectCount = it.incorrectCount + 1)
+                            else it
+                        }
+                        scope.launch {
+                            wordStorage.setWords(updatedList)
+
+                            val updatedProgress = userProgress
+                                .updateStreakForToday(today)
+                                .let { autoUnlockBadges(it, updatedList) }
+                            progressStorage.saveProgress(updatedProgress)
+                        }
+                    }
+                    goToNextQuizQuestion()
+                },
                 onNextQuestion = {
                     if (quizOrder.isEmpty()) {
                         // no-op
@@ -274,8 +414,7 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
                         quizPosition += 1
                         quizRevealed = false
                     }
-                }
-                ,
+                },
                 onReset = {
                     quizPosition = 0
                     quizRevealed = false
@@ -284,545 +423,31 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
                 onBack = { navController.popBackStack() }
             )
         }
-    }
-}
-
-@Composable
-private fun HomeScreen(
-    wordCount: Int,
-    onNavigateToManage: () -> Unit,
-    onNavigateToFlashcards: () -> Unit,
-    onNavigateToQuiz: () -> Unit
-) {
-    QuizScreenScaffold(title = "영단어 학습") { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            Text(
-                text = "오늘의 학습",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "등록된 단어 ${wordCount}개",
-                style = MaterialTheme.typography.bodyLarge
-            )
-            if (wordCount == 0) {
-                Text(
-                    text = "아직 등록된 단어가 없습니다. 단어 관리에서 학습 목록을 만들어 보세요.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            HomeMenuCard(
-                title = "단어 관리",
-                description = "새 단어를 추가하고 기존 단어를 수정하거나 삭제합니다.",
-                onClick = onNavigateToManage
-            )
-            HomeMenuCard(
-                title = "플래시카드",
-                description = "단어 먼저 보기 또는 뜻 먼저 보기 모드로 뒤집어 보며 암기하세요.",
-                onClick = onNavigateToFlashcards
-            )
-            HomeMenuCard(
-                title = "단어 퀴즈",
-                description = "랜덤 순서로 단어/뜻 맞히기 퀴즈를 풀어보세요.",
-                onClick = onNavigateToQuiz
-            )
-        }
-    }
-}
-
-@Composable
-private fun WordManagerScreen(
-    words: List<WordEntry>,
-    newTerm: String,
-    newMeaning: String,
-    editingId: Long?,
-    editingTerm: String,
-    editingMeaning: String,
-    onNewTermChange: (String) -> Unit,
-    onNewMeaningChange: (String) -> Unit,
-    onAddWord: () -> Unit,
-    onEditStart: (WordEntry) -> Unit,
-    onEditTermChange: (String) -> Unit,
-    onEditMeaningChange: (String) -> Unit,
-    onEditConfirm: () -> Unit,
-    onEditCancel: () -> Unit,
-    onDeleteWord: (WordEntry) -> Unit,
-    onBack: () -> Unit
-) {
-    QuizScreenScaffold(title = "단어 관리", onBack = onBack) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            WordManagerSection(
+        composable(Screen.Badges.route) {
+            BadgesScreen(
+                userProgress = userProgress,
                 words = words,
-                newTerm = newTerm,
-                newMeaning = newMeaning,
-                editingId = editingId,
-                editingTerm = editingTerm,
-                editingMeaning = editingMeaning,
-                onNewTermChange = onNewTermChange,
-                onNewMeaningChange = onNewMeaningChange,
-                onAddWord = onAddWord,
-                onEditStart = onEditStart,
-                onEditTermChange = onEditTermChange,
-                onEditMeaningChange = onEditMeaningChange,
-                onEditConfirm = onEditConfirm,
-                onEditCancel = onEditCancel,
-                onDeleteWord = onDeleteWord
+                onBack = { navController.popBackStack() }
             )
         }
-    }
-}
-
-@Composable
-private fun FlashcardScreen(
-    words: List<WordEntry>,
-    selectedIndex: Int,
-    isMeaningFirst: Boolean,
-    isFlipped: Boolean,
-    onSelectPrevious: () -> Unit,
-    onSelectNext: () -> Unit,
-    onToggleMeaningFirst: (Boolean) -> Unit,
-    onFlipCard: () -> Unit,
-    onBack: () -> Unit
-) {
-    QuizScreenScaffold(title = "플래시카드", onBack = onBack) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            WordCardSection(
-                words = words,
-                selectedIndex = selectedIndex,
-                isMeaningFirst = isMeaningFirst,
-                isFlipped = isFlipped,
-                onSelectPrevious = onSelectPrevious,
-                onSelectNext = onSelectNext,
-                onToggleMeaningFirst = onToggleMeaningFirst,
-                onFlipCard = onFlipCard
-            )
-        }
-    }
-}
-
-@Composable
-private fun QuizPracticeScreen(
-    words: List<WordEntry>,
-    currentWord: WordEntry?,
-    quizMode: QuizMode,
-    shuffleEnabled: Boolean,
-    quizPosition: Int,
-    totalQuestions: Int,
-    quizRevealed: Boolean,
-    onModeChange: (QuizMode) -> Unit,
-    onToggleShuffle: (Boolean) -> Unit,
-    onRevealAnswer: () -> Unit,
-    onNextQuestion: () -> Unit,
-    onReset: () -> Unit,
-    onBack: () -> Unit
-) {
-    QuizScreenScaffold(title = "단어 퀴즈", onBack = onBack) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            QuizSection(
-                words = words,
-                currentWord = currentWord,
-                quizMode = quizMode,
-                shuffleEnabled = shuffleEnabled,
-                quizPosition = quizPosition,
-                totalQuestions = totalQuestions,
-                quizRevealed = quizRevealed,
-                onModeChange = onModeChange,
-                onToggleShuffle = onToggleShuffle,
-                onRevealAnswer = onRevealAnswer,
-                onNextQuestion = onNextQuestion,
-                onReset = onReset
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun QuizScreenScaffold(
-    title: String,
-    modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null,
-    content: @Composable (PaddingValues) -> Unit
-) {
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    if (onBack != null) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.Filled.ArrowBack,
-                                contentDescription = "뒤로가기"
-                            )
-                        }
+        composable(Screen.TypingGame.route) {
+            TypingGameScreen(
+                words = filteredWords,
+                userProgress = userProgress,
+                onGameComplete = { score, correctCount ->
+                    scope.launch {
+                        val xpEarned = correctCount * 15
+                        val updatedProgress = userProgress
+                            .addXP(xpEarned)
+                            .updateStreakForToday(today)
+                            .let { autoUnlockBadges(it, words) }
+                        progressStorage.saveProgress(updatedProgress)
                     }
-                }
+                },
+                onBack = { navController.popBackStack() }
             )
         }
-    ) { innerPadding ->
-        content(innerPadding)
     }
-}
-
-@Composable
-private fun HomeMenuCard(
-    title: String,
-    description: String,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(text = description, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-@Composable
-private fun WordManagerSection(
-    words: List<WordEntry>,
-    newTerm: String,
-    newMeaning: String,
-    editingId: Long?,
-    editingTerm: String,
-    editingMeaning: String,
-    onNewTermChange: (String) -> Unit,
-    onNewMeaningChange: (String) -> Unit,
-    onAddWord: () -> Unit,
-    onEditStart: (WordEntry) -> Unit,
-    onEditTermChange: (String) -> Unit,
-    onEditMeaningChange: (String) -> Unit,
-    onEditConfirm: () -> Unit,
-    onEditCancel: () -> Unit,
-    onDeleteWord: (WordEntry) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(
-            value = newTerm,
-            onValueChange = onNewTermChange,
-            label = { Text("단어") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = newMeaning,
-            onValueChange = onNewMeaningChange,
-            label = { Text("뜻") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Button(
-            onClick = onAddWord,
-            modifier = Modifier.align(Alignment.End),
-            enabled = newTerm.isNotBlank() && newMeaning.isNotBlank()
-        ) {
-            Text("단어 추가")
-        }
-
-        if (words.isEmpty()) {
-            Text(
-                text = "등록된 단어가 없습니다. 새로운 단어를 추가해 보세요.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                words.forEach { word ->
-                    val isEditing = editingId == word.id
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (isEditing) {
-                                OutlinedTextField(
-                                    value = editingTerm,
-                                    onValueChange = onEditTermChange,
-                                    label = { Text("단어") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                OutlinedTextField(
-                                    value = editingMeaning,
-                                    onValueChange = onEditMeaningChange,
-                                    label = { Text("뜻") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = onEditConfirm,
-                                        enabled = editingTerm.isNotBlank() && editingMeaning.isNotBlank()
-                                    ) {
-                                        Text("저장")
-                                    }
-                                    TextButton(onClick = onEditCancel) {
-                                        Text("취소")
-                                    }
-                                }
-                            } else {
-                                Text(
-                                    text = word.term,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(text = word.meaning, style = MaterialTheme.typography.bodyMedium)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { onEditStart(word) }) { Text("수정") }
-                                    TextButton(onClick = { onDeleteWord(word) }) { Text("삭제") }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun WordCardSection(
-    words: List<WordEntry>,
-    selectedIndex: Int,
-    isMeaningFirst: Boolean,
-    isFlipped: Boolean,
-    onSelectPrevious: () -> Unit,
-    onSelectNext: () -> Unit,
-    onToggleMeaningFirst: (Boolean) -> Unit,
-    onFlipCard: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterButton(
-                text = "단어 먼저 보기",
-                selected = !isMeaningFirst,
-                onClick = { onToggleMeaningFirst(false) }
-            )
-            FilterButton(
-                text = "뜻 먼저 보기",
-                selected = isMeaningFirst,
-                onClick = { onToggleMeaningFirst(true) }
-            )
-        }
-        if (words.isEmpty()) {
-            Text("플래시카드 학습을 위해 단어를 추가하세요.", style = MaterialTheme.typography.bodyMedium)
-            return@Column
-        }
-
-        val safeIndex = selectedIndex.coerceIn(0, words.lastIndex)
-        val currentWord = words[safeIndex]
-        val showWordSide = if (isMeaningFirst) isFlipped else !isFlipped
-        val cardLabel = if (showWordSide) "단어" else "뜻"
-        val cardText = if (showWordSide) currentWord.term else currentWord.meaning
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onFlipCard() },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(cardLabel, style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        text = cardText,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp),
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(text = "(탭하여 뒤집기)", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            TextButton(onClick = onSelectPrevious) {
-                Text("이전")
-            }
-            Text(text = "${safeIndex + 1} / ${words.size}", style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = onSelectNext) {
-                Text("다음")
-            }
-        }
-    }
-}
-
-@Composable
-private fun FilterButton(text: String, selected: Boolean, onClick: () -> Unit) {
-    val colors = if (selected) {
-        ButtonDefaults.textButtonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
-        )
-    } else {
-        ButtonDefaults.textButtonColors()
-    }
-    TextButton(
-        onClick = onClick,
-        colors = colors,
-        modifier = Modifier
-            .size(width = 140.dp, height = 48.dp)
-    ) {
-        Text(text)
-    }
-}
-
-@Composable
-private fun QuizSection(
-    words: List<WordEntry>,
-    currentWord: WordEntry?,
-    quizMode: QuizMode,
-    shuffleEnabled: Boolean,
-    quizPosition: Int,
-    totalQuestions: Int,
-    quizRevealed: Boolean,
-    onModeChange: (QuizMode) -> Unit,
-    onToggleShuffle: (Boolean) -> Unit,
-    onRevealAnswer: () -> Unit,
-    onNextQuestion: () -> Unit,
-    onReset: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterButton(text = "단어 먼저 보기", selected = quizMode == QuizMode.WordFirst) {
-                onModeChange(QuizMode.WordFirst)
-            }
-            FilterButton(text = "뜻 먼저 보기", selected = quizMode == QuizMode.MeaningFirst) {
-                onModeChange(QuizMode.MeaningFirst)
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("순서 섞기")
-            TextButton(onClick = { onToggleShuffle(!shuffleEnabled) }) {
-                Text(if (shuffleEnabled) "켜짐" else "꺼짐")
-            }
-        }
-
-        if (currentWord == null || words.isEmpty()) {
-            Text("퀴즈를 시작하려면 단어를 추가하세요.", style = MaterialTheme.typography.bodyMedium)
-            return@Column
-        }
-
-        val prompt = if (quizMode == QuizMode.WordFirst) currentWord.term else currentWord.meaning
-        val answer = if (quizMode == QuizMode.WordFirst) currentWord.meaning else currentWord.term
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "문제 ${quizPosition + 1} / $totalQuestions",
-                    style = MaterialTheme.typography.labelLarge
-                )
-                Text(text = prompt, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                if (quizRevealed) {
-                    Divider()
-                    Text(text = answer, style = MaterialTheme.typography.titleMedium)
-                } else {
-                    Button(onClick = onRevealAnswer) {
-                        Text("정답 보기")
-                    }
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            TextButton(onClick = onReset) {
-                Text("처음부터")
-            }
-            Button(onClick = onNextQuestion) {
-                Text("다음 문제")
-            }
-        }
-    }
-}
-
-private enum class Screen(val route: String) {
-    Home("home"),
-    Manage("manage"),
-    Flashcards("flashcards"),
-    Quiz("quiz")
-}
-
-data class WordEntry(
-    val id: Long,
-    val term: String,
-    val meaning: String
-)
-
-enum class QuizMode {
-    WordFirst,
-    MeaningFirst
 }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 800)

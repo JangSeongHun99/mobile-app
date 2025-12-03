@@ -5,7 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.example.myapp.WordEntry
+import com.example.myapp.models.WordEntry
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -24,7 +24,7 @@ class WordStorage(private val context: Context) {
         private const val EMPTY_JSON = "[]"
     }
 
-    /** 단어 스트림 */
+    /** Stored word list. */
     val wordsFlow: Flow<List<WordEntry>> = context.wordDataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -38,7 +38,7 @@ class WordStorage(private val context: Context) {
             decodeWords(json)
         }
 
-    /** 전체 덮어쓰기 */
+    /** Replace all words. */
     suspend fun setWords(words: List<WordEntry>) {
         context.wordDataStore.edit { preferences ->
             preferences[WORDS_KEY] = if (words.isEmpty()) EMPTY_JSON else encodeWords(words)
@@ -46,8 +46,8 @@ class WordStorage(private val context: Context) {
     }
 
     /**
-     * 최초 실행 시 기본 단어를 채워넣기.
-     * - 키가 없거나 값이 "[]" 인 경우에만 시드 주입
+     * Seed default words on first launch.
+     * - Only when the stored payload is blank or "[]".
      */
     suspend fun ensureSeeded(defaultWords: List<WordEntry>) {
         if (defaultWords.isEmpty()) return
@@ -60,7 +60,6 @@ class WordStorage(private val context: Context) {
         if (!shouldSeed) return
 
         context.wordDataStore.edit { prefs ->
-            // 여전히 다른 쓰레드가 썼을 수 있으니 한 번 더 체크
             val existing = prefs[WORDS_KEY]
             if (existing.isNullOrBlank() || existing == EMPTY_JSON) {
                 prefs[WORDS_KEY] = encodeWords(defaultWords)
@@ -68,11 +67,10 @@ class WordStorage(private val context: Context) {
         }
     }
 
-    /** JSON 인코딩 */
+    /** JSON encode. */
     private fun encodeWords(words: List<WordEntry>): String {
-        // id 기준 정렬 + 중복 id 제거(마지막 값 우선)
         val deduped = words
-            .associateBy { it.id } // 동일 id 마지막 것이 남음
+            .associateBy { it.id } // keep the first appearance of each id
             .values
             .sortedBy { it.id }
 
@@ -82,13 +80,16 @@ class WordStorage(private val context: Context) {
                 put("id", word.id)
                 put("term", word.term)
                 put("meaning", word.meaning)
+                put("correctCount", word.correctCount)
+                put("incorrectCount", word.incorrectCount)
+                put("categoryId", word.categoryId)
             }
             jsonArray.put(obj)
         }
         return jsonArray.toString()
     }
 
-    /** JSON 디코딩 */
+    /** JSON decode. */
     private fun decodeWords(json: String): List<WordEntry> {
         return runCatching {
             val array = JSONArray(json)
@@ -98,16 +99,28 @@ class WordStorage(private val context: Context) {
                 val term = item.optString("term", "").trim()
                 val meaning = item.optString("meaning", "").trim()
                 val id = item.optLong("id", -1L)
+                val correctCount = item.optInt("correctCount", 0)
+                val incorrectCount = item.optInt("incorrectCount", 0)
+                val categoryId = item.optString("categoryId", "uncategorized")
                 if (id >= 0 && term.isNotEmpty() && meaning.isNotEmpty()) {
-                    temp.add(WordEntry(id = id, term = term, meaning = meaning))
+                    temp.add(
+                        WordEntry(
+                            id = id,
+                            term = term,
+                            meaning = meaning,
+                            correctCount = correctCount,
+                            incorrectCount = incorrectCount,
+                            categoryId = categoryId
+                        )
+                    )
                 }
             }
-            // 중복 id 제거(마지막 값 우선), id 오름차순 정렬로 안정화
+            // Remove duplicate ids (latest wins) and keep ascending order for stability.
             temp.associateBy { it.id }.values.sortedBy { it.id }
         }.getOrElse { emptyList() }
     }
 
-    /** 선택: 전부 비우기 유틸  **/
+    /** Utility: clear everything. */
     suspend fun clear() {
         context.wordDataStore.edit { it[WORDS_KEY] = EMPTY_JSON }
     }
