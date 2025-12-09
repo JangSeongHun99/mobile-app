@@ -6,7 +6,7 @@ Android 앱 개발 학습 과정에서 Jetpack Compose를 활용한 프로젝트
 
 ## 목차
 
-- [MyApp - QuizApp](#MyApp---QuizApp)
+- [MyApp - QuizApp](#MyApp---TOEIC-영단어-학습-앱)
 - [Week 3 - Gemini Home Screen](#week-3---gemini-home-screen)
 - [Week 4 - Profile & Message Cards](#week-4---profile--message-cards)
 - [Week 5 - Counter & Stopwatch](#week-5---counter--stopwatch)
@@ -14,59 +14,158 @@ Android 앱 개발 학습 과정에서 Jetpack Compose를 활용한 프로젝트
 
 ---
 
-## MyApp - QuizApp
+# MyApp - TOEIC 영단어 학습 앱
 
-### 프로젝트 개요
+> 게임화된 학습 경험과 20개 카테고리별 체계적 TOEIC 학습
 
-영단어 추가/수정/삭제, 플래시카드, 퀴즈 기능을 제공하는 학습 앱으로, DataStore를 활용한 데이터 영구 저장을 학습합니다.
+---
+
+## 프로젝트 개요
+
+TOEIC 시험 대비를 위한 영단어 학습 앱으로, **게임화 시스템(레벨/XP/스트릭)**, **20개 TOEIC 도메인 카테고리**, **다양한 학습 모드**를 제공합니다.
+
+- 정답/오답 실시간 통계
+- 20개 TOEIC 도메인별 집중 학습
+- 스트릭 시스템으로 학습 습관 형성
+- 레벨/XP/배지 시스템
+
+---
+
+## 스크린샷
 
 ![MyApp 실행 화면1](screenshots/myapp_screenshot_1.png)
 ![MyApp 실행 화면2](screenshots/myapp_screenshot_2.png)
 ![MyApp 실행 화면3](screenshots/myapp_screenshot_3.png)
 ![MyApp 실행 화면4](screenshots/myapp_screenshot_4.png)
-![MyApp 코드1](screenshots/myapp_code_1.png)
-![MyApp 코드2](screenshots/myapp_code_2.png)
 
-### 주요 기능
+---
 
-- **홈**: 단어 개수 요약 및 화면 이동
-- **단어 관리**: 단어 추가/수정/삭제
-- **플래시카드**: 단어↔뜻 뒤집기, 순서 전환
-- **퀴즈**: 단어/뜻 먼저 모드, 순서 섞기, 정답 확인
+## 주요 기능
 
-### 기술 스택
+### 1. 홈 대시보드
+- 학습 통계 (정답률, 정답/오답 수)
+- 레벨/XP 프로그레스 바
+- 스트릭 추적 (현재/최장 기록)
+- 20개 TOEIC 카테고리 필터
 
-- **저장소**: Preferences DataStore (JSON 직렬화)
-- **네비게이션**: Navigation-Compose
-- **상태 관리**: `rememberSaveable`, `collectAsState`
+### 2. 단어 관리
+- 단어 추가/수정/삭제
+- 키워드 기반 자동 카테고리 분류
+- 단어/뜻 실시간 검색
 
-### 핵심 구현
+### 3. 플래시카드
+- 카드 뒤집기 애니메이션 (180도 회전)
+- 단어 먼저 보기 / 뜻 먼저 보기 모드
+- 이전/다음 순환 네비게이션
+
+### 4. 단어 퀴즈
+- 단어/뜻 먼저 보기 모드
+- 셔플 모드, 카테고리별 퀴즈
+- 단어별 정답률 추적, 정답 시 +10 XP
+
+### 5. 타이핑 게임
+- 60초 타임 어택
+- 시간 보너스 점수 시스템
+- 정답마다 +15 XP
+
+### 6. 업적 & 뱃지
+- 12가지 뱃지 (단어 수집, 퀴즈 완료, 스트릭, 레벨 달성 등)
+- 조건 달성 시 자동 해금
+
+---
+
+## 20개 TOEIC 도메인 카테고리
+
+TOEIC 주요 주제를 20개 카테고리로 세분화:
+
+비즈니스/사무 (5개 그룹) | 회계/금융 | 인사/채용 | 영업/마케팅
+스케줄/시간관리 | 품질/검사 | 비즈니스 협상 | 운영/생산/물류
+기술/IT | 출장/여행 | 숙박/외식 | 법무/규제
+건강/의료 | 교육/연수 | 환경/에너지 | 부동산/시설
+
+**자동 분류**: 단어 추가 시 키워드 기반 자동 카테고리 분류 (150+ 키워드 규칙)
+
+---
+
+## 앱 개발 단계
+
+**Phase 1 (MVP)**: 단어 CRUD, 플래시카드, 퀴즈, DataStore 연동
+**Phase 2**: 20개 TOEIC 카테고리 시스템 + 자동 분류
+**Phase 3**: 레벨/XP/스트릭 게임화 시스템
+**Phase 4**: 타이핑 게임, 배지 시스템 (12가지)
+**Phase 5**: Material3 디자인, 애니메이션, 검색 기능
+
+---
+
+## 기술 스택
+
+**핵심**: Jetpack Compose, Kotlin, Material3 (minSdk 31)
+
+**주요 라이브러리**:
+- `navigation-compose:2.7.7` - 화면 네비게이션
+- `datastore-preferences:1.1.1` - 로컬 데이터 저장
+- `kotlinx-serialization` - JSON 직렬화
+
+**아키텍처**: MVVM, Repository 패턴, 단방향 데이터 흐름
+
+---
+
+## 데이터 모델
 
 ```kotlin
 data class WordEntry(
     val id: Long,
-    val term: String,
-    val meaning: String
+    val term: String,              // 영어 단어
+    val meaning: String,           // 뜻
+    val correctCount: Int = 0,     // 정답 횟수
+    val incorrectCount: Int = 0,   // 오답 횟수
+    val categoryId: String         // 카테고리 ID
 )
 
-// DataStore 설정
-private const val WORD_DATA_STORE_NAME = "word_storage"
-private val Context.wordDataStore by preferencesDataStore(name = WORD_DATA_STORE_NAME)
+data class UserProgress(
+    val level: Int = 1,
+    val currentXP: Int = 0,
+    val currentStreak: Int = 0,
+    val longestStreak: Int = 0,
+    val unlockedBadges: List<String> = emptyList()
+)
 ```
 
-### 의존성
+**저장 방식**: DataStore (Preferences) - JSON 직렬화
 
-```kotlin
-implementation("androidx.datastore:datastore-preferences:1.1.1")
-implementation("androidx.navigation:navigation-compose:2.7.7")
-```
+---
 
-### 주요 학습 내용
+## 게임화 시스템
 
-- Preferences DataStore를 활용한 로컬 데이터 저장
-- Navigation-Compose를 통한 화면 전환
-- 복잡한 상태 관리 및 UI 업데이트
-- 퀴즈 로직 구현 (셔플, 순환, 답안 검증)
+**레벨 & XP**
+- 퀴즈 정답: +10 XP
+- 타이핑 게임 정답: +15 XP
+- 레벨업 공식: `다음 레벨 필요 XP = 현재 레벨 × 100`
+
+**스트릭**
+- 연속 학습일 자동 추적
+- 하루 놓치면 1일로 리셋
+- 최장 기록 별도 보관
+
+**정답률**: `(정답 횟수 / 총 시도) × 100`
+
+---
+
+## UI/UX
+
+- **Material3 Design**: Dynamic Color, Card, FilterChip
+- **애니메이션**: 플래시카드 180도 회전 (FastOutSlowInEasing)
+- **반응형**: 스크롤 가능한 필터, 자동 줄바꿈
+
+---
+
+## 주요 학습 내용
+
+- Navigation Compose, 복잡한 상태 관리 (rememberSaveable)
+- DataStore + JSON 직렬화, Flow 기반 반응형 데이터
+- Material3 디자인 시스템, 애니메이션 (animateFloatAsState)
+- 키워드 기반 자동 분류 알고리즘, 레벨/XP/스트릭 로직
+- MVVM + Repository 패턴
 
 ---
 
