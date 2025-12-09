@@ -111,17 +111,20 @@ fun WordQuizApp(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(words) {
-        if (words.isNotEmpty() && words.any { it.categoryId == DefaultCategories.UNCATEGORIZED.id }) {
-            val updated = words.map { word ->
-                if (word.categoryId == DefaultCategories.UNCATEGORIZED.id) {
-                    ToeicCategoryClassifier.apply(word)
-                } else {
-                    word
-                }
+        if (words.isEmpty()) return@LaunchedEffect
+
+        val updated = words.map { word ->
+            // 예전 저장본(미분류 또는 단일 비즈니스 카테고리)은 최신 규칙으로 재분류
+            if (word.categoryId == DefaultCategories.UNCATEGORIZED.id ||
+                word.categoryId == DefaultCategories.BUSINESS.id
+            ) {
+                ToeicCategoryClassifier.apply(word)
+            } else {
+                word
             }
-            if (updated != words) {
-                wordStorage.setWords(updated)
-            }
+        }
+        if (updated != words) {
+            wordStorage.setWords(updated)
         }
     }
 
